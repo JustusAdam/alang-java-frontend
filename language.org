@@ -1,0 +1,280 @@
+* Example
+
+  I have two suggestions.
+
+  We can also eventually, if we wish, implement both.
+
+** JavaScript like (modern)
+
+   This syntax is less Java like and more JavaScript like, but it is also in
+   certain respects similar to Rust, TypeScript, Python and Scala. Its a more
+   modern syntax.
+
+   #+BEGIN_SRC js
+   namespace pkg.myNamespace;
+   import algo { algo1, algo2 as other_name } from "namespace";
+   import sf { sf1 } from "namespace";
+
+   algo unannotatedAlgo(param1, param2) {
+       let unannotatedVal = 0;
+       let annotatedVal : String = "String";
+
+       let choice = if unannotatedVal == 0 { annotatedVal } else { "NO NO NO" };
+
+       let aValue : List String =
+           for str in strings {
+               yield str.append("\n");
+           };
+
+       return unannotatedVal;
+   }
+   algo annotatedAlgo(param1 : Type1, param2 : Type2) : ReturnType {..}
+   #+END_SRC
+
+** Java like (traditional)
+
+   This syntax is a lot closer to java, I don't like it as much but it probably
+   feels more familiar to a java developer.
+
+   #+BEGIN_SRC java
+   package pkg.myNamespace;
+   import algo namespace.{ algo1, algo2 };
+   import sf namespace.sf1;
+
+   val unannotatedAlgo(val param1, val param2) {
+       val unannotatedVal = 0;
+       String annotatedVal = "String";
+
+       val choice = if (unannotatedVal == 0) { annotatedVal } else { "NO NO NO" };
+
+       List<String> aValue =
+           for (val str : strings {
+               yield str.append("\n");
+           };
+
+       return unannotatedVal;
+   }
+   ReturnType annotatedAlgo(Type1 param1, Type2 param2) {..}
+   #+END_SRC
+
+* Detailed Specification Considerations
+
+** Namespace
+
+   Original, java like, would be the =package= keyword.
+
+   #+BEGIN_SRC java
+   package test.operators;
+   #+END_SRC
+
+   However more consistent with the ohua naming would be the use of =namespace=.
+
+   #+BEGIN_SRC java
+   namespace test.operators;
+   #+END_SRC
+
+** Imports
+
+   I think imports are fine the java way. I'd add *a little extra syntax* from
+   scala and rust, where *multiple imports* from the same package can be
+   *grouped* using ={}= braces. The advantage of this braces syntax is that it
+   is fully compatible with the standard java syntax, aka not using braces is
+   still valid.
+
+   #+BEGIN_SRC java
+   import pkg.path.function;
+   import pkg.path.{function1, function2};
+   #+END_SRC
+
+   An important decision is whether we wish to *allow wildcard syntax*. The
+   Problem is that if we do, I can no longer export a full list of all used
+   stateful functions in the compiler output. So maybe, for now, we should
+   *disallow it*. If we like we can add it in later.
+
+   A general question to be answered for java is whether we might want to
+   *include the class* in the import. Thus what is now =pkg.path.function= would
+   then be =pkg.path.ImplementingClass.function=. *I am in favour of this*, I'm
+   not a big fan of forgetting the class name (this is currently the case).
+   It'll also make the ambiguity check not a runtime problem. (the java compiler
+   will check that before)
+
+   In Rust we also *distinguish algo and stateful function imports*, and I think
+   we might want to keep that. It is better for the compiler, because it
+   currently does not know which stateful functions are in scope and thus cannot
+   report missing algorithms, because it must conservatively assume that is is a
+   stateful function. Instead of an "algo not found" error we would then get a
+   "stateful function not found".
+
+   #+BEGIN_SRC java
+   import algo pkg.path.some_algo;
+   import sf pkg.another.path.{sf1, sf2};
+   #+END_SRC
+
+*** Alternative
+
+    Alternatively we might want to go more the javascript route, which I think
+    is also fine, it's the most used language after all. Plus it supports
+    aliasing, which I think is a nice feature.
+
+    #+BEGIN_SRC js
+    import algo { algo1, algo2 as other_name } from "namespace";
+    import sf { sf1 } from "namespace";
+    #+END_SRC
+
+    Whether "module-name" really needs to be enclosed in quotes is depatable,
+    but it doesn't hurt and this way its closer to the actual javascript import
+    (see
+    https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/import).
+
+    I think it is worth noting that we would only implement the above mentioned
+    subset of the import syntax, as the rest makes no sense for us now.
+** Variables
+
+   I think bindings definitely need two modes, ones with inferred type and ones
+   with annotated type.
+
+*** Keyword
+
+    In this case I'd recommend using =let=. It better captures the fact that
+    bindings are immutable. Also it is used by JavaScript and Rust as well, so
+    its "widely" accepted syntax. We could also use =const=, but I don't like
+    that so much. We could also use =var=, but =var= insinuates it is
+    *variable*, thus changeable. Better would be =val=, which is what scala
+    uses.
+
+*** Type annotation
+
+    I think, since the type annotation is optional we should do it like rust,
+    javascript, python and scala does it and *append* the annotation to the
+    variable name.
+
+    #+BEGIN_SRC rust
+    let var0 = "This has inferred type";
+    let var1 : String = "This is annotated";
+    #+END_SRC
+
+**** Alternative
+
+     Alternatively we put the type before the variable name and use =let= or
+     =val= for inferred type. That's more c/java like but I find that syntax
+     feels inconsistent.
+
+     #+BEGIN_SRC java
+     String str = "a String";
+     val inferred_string = "inferred string";
+     #+END_SRC
+
+** Algos/Functions
+
+*** Keyword
+
+    My recommendation would be to recycle the =algo= keyword, we use in the
+    imports as well and allow the algos type to be optional as well.
+
+    What I see as the biggest advantage here is that at some point we could also
+    allow a =function= keyword which would mark an algo definition that the
+    programmer wishes us to explicitly fuse, aka code gen.
+
+*** Type Annotation
+
+    Since we have optional types I'd recommend again using the prepend types
+    again. It feels to me that that is the current trend seeing how Rust,
+    JavaScript (flow), Python, TypeScript and Scala all append types using =:=.
+
+    #+BEGIN_SRC java
+    algo unannotatedAlgo(param1, param2) {..}
+    algo annotatedAlgo(param1 : Type1, param2 : Type2) : ReturnType {..}
+    #+END_SRC
+
+*** Alternative
+
+    As an alternative we can also use the prefix notation that java uses. And
+    not use the algo keyword.
+
+    #+BEGIN_SRC java
+    ReturnType annotatedAlgo (Type1 param1, Type2 param2) {..}
+    val unannotatedAlgo (param1, param2) {..}
+    #+END_SRC
+
+** Loops
+
+   Syntactic sugar for smap.
+
+   #+BEGIN_SRC java
+   for (val value : collection) {
+       ...
+       yield changed_value;
+   }
+   #+END_SRC
+
+   Or, if we want to be more modern and rust/javascript like we could do
+
+   #+BEGIN_SRC rust
+   for value : Type in collection {
+       stmt1;
+       stmt2;
+       changed_value
+   }
+   #+END_SRC
+
+   Since this is only syntactic sugar for smap we need to return a value. Either
+   we return the last value (like rust, see code version 2) or we introduce
+   something like a =yield= keyword, which is like return but in a loop.
+
+** Return Statement
+
+   I hate return statement, but everyone still seems to really like them, so
+   perhaps we should use them as well.
+
+** If
+
+   *Syntactic sugar* for =if= statements. Since we only deal with expressions (and
+   don't have =ref= yet) =if= must be an expression as well.
+
+   #+BEGIN_SRC
+   let value = if (condition) { branch1 } else { branch2 };
+   #+END_SRC
+
+   I'd also recommend supporting =if else= which desugars to nested if
+   expressions.
+
+   If one wishes to return from an if, the expression itself has to be returned.
+   I believe eventually we can desugar returns from the branches too, but that
+   requires more work.
+
+   #+BEGIN_SRC rust
+   algo (...) {
+       ...
+       return if (cond) { .. } else { .. };
+   }
+   #+END_SRC
+
+   One question that remains open is whether we *require the parentheses* around the
+   condition. Technically we don't need them, but I can make them mandatory too.
+
+** Misc
+
+*** Semicolons
+
+    Should we keep the semicolons? It would be more java/javascript like to keep
+    them but we don't really need them.
+
+*** Type Annotations
+
+    One other thing I like about the append with =:= type annotations is that we
+    could at some point allow what Haskell does and allow type annotations to
+    occur anywhere in the code using the =:= operator.
+
+*** Additional reserved words
+
+    - =private= :: I'd recommend reserving the private keyword, or,
+                   alternatively the =public= or =pub= keyword if we ever which
+                   to add something like explicit exports. Alternatively we
+                   reserve =export= to write an export statement (more
+                   JavaScript like).
+    - =ref= :: This is an idea from ocaml, where refs are mutable variables.
+               Perhaps we can use that to eventually introduce explicit (safe)
+               shared state. The ref keyword is used to "make" a memory cell
+               that can be altered. So one could use =let c = ref value;= to
+               create a cell and the =c <- new_value= to change it or something
+               similar.
